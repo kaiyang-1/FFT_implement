@@ -70,6 +70,7 @@ void bit_reserse_radix2(T *seq, size_t length)
         }
         index_r.push_back(ir);
     }
+    // bit_reverse_permute(std::log2(length), index_r);
 
     for(size_t i = 0; i < length; i++)
     {
@@ -103,7 +104,7 @@ void rand_vec(std::vector<T> & seq){
     size_t i;
     for(i = 0; i < seq.size(); i++)
     {
-        seq[i] = dist(mt);
+        seq[i] = (T)(i + 1); //dist(mt);
     }
 }
 
@@ -173,16 +174,17 @@ template<typename T>
 void fft_cooley_tukey(complex_t<T> *seq, size_t length, bool is_inverse)
 {
     if(length == 1) return; // f_seq = t_seq
+    assert( ( (length & (length - 1)) == 0 ) && "the length mush be a power of 2");
 
     // arrange seq to a bit-reversed order
     bit_reserse_radix2(seq, length);
 
     // pre-computed half list of omege_k
-    std::vector<complex_t<T>> omega_k;
+    std::vector<complex_t<T>> omega_list;
     int sign = is_inverse? 1:-1;
     for(size_t k = 0; k < length/2; k++)
     {
-        omega_k.push_back(TwiddleFactor(length, k, sign));
+        omega_list.push_back(TwiddleFactor(length, k, sign));
     }
 
     // pt is the number of points in each fft group
@@ -194,7 +196,7 @@ void fft_cooley_tukey(complex_t<T> *seq, size_t length, bool is_inverse)
         {
             for(size_t s = 0; s < stride; s++)
             {
-                ButterFly(seq[g*N_group + s], seq[g*N_group + s + stride], omega_k[N_group*s]);
+                ButterFly(seq[g*pt + s], seq[g*pt + s + stride], omega_list[N_group*s]);
             }
         }
     }
@@ -273,7 +275,7 @@ void iFFT_C2R(complex_t<T> *f_seq, T *t_seq, size_t length)
 
 int main()
 {
-    const size_t max_size = 8;
+    const size_t max_size = 128;
     for(size_t size = 2; size<=max_size; size *= 2)
     {
         std::vector<complex_t<d_type>> t_seq;
@@ -303,7 +305,17 @@ int main()
         {
             seq_bwd.push_back(complex_t<d_type>(seq_bwd_real[i], (d_type)0));
         }
-        
+
+/*
+        seq_bwd.resize(size);
+        for(size_t i = 0; i < size; i++)
+        {
+            seq_fwd[i] = t_seq[i];
+            seq_bwd[i] = f_seq[i];
+        }
+        fft_cooley_tukey(seq_fwd.data(), size, 0);
+        fft_cooley_tukey(seq_bwd.data(), size, 1);
+*/
         int err_cnt = valid_vector(f_seq, seq_fwd);
         int ierr_cnt = valid_vector(t_seq_r, seq_bwd);
         std::cout<<"length:"<<size<<", r2c fwd valid:"<< ( (err_cnt==0)?"y":"n" ) <<
