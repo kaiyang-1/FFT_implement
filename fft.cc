@@ -540,7 +540,7 @@ void fft_r2c(const T* t_seq, complex_t<T> * f_seq, size_t length, bool half_mode
     for(size_t i=0;i<length/2;i++){
         seq.emplace_back(t_seq[2*i], t_seq[2*i+1]);
     }
-    fft_cooley_tukey_r(seq.data(), length/2);
+    fft_cooley_tukey(seq.data(), length/2);
 
     f_seq[0] = seq[0]*A[0]+std::conj(seq[0])*B[0];    // X(N/2)=X(0)
     for(size_t i=1;i<length/2;i++){
@@ -622,7 +622,7 @@ void ifft_c2r(const complex_t<T> * f_seq, T* t_seq, size_t length, bool half_mod
         seq[itr] = f_seq[itr]*std::conj(A[itr])+std::conj(f_seq[length/2-itr])*std::conj(B[itr]);
     }
 
-    ifft_cooley_tukey_r(seq.data(), length/2);
+    ifft_cooley_tukey(seq.data(), length/2);
 
     for(size_t i=0;i<length/2;i++){
         t_seq[2*i] = std::real(seq[i]);
