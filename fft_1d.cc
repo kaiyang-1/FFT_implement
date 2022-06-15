@@ -93,7 +93,6 @@ void rand_vec(std::vector<complex_t<T>> & seq){
         seq[i] = complex_t<T>(dist(mt), dist(mt));
     }
 }
-
 template<typename T>
 void rand_vec(std::vector<T> & seq){
     static std::random_device rd;   // seed
@@ -104,7 +103,7 @@ void rand_vec(std::vector<T> & seq){
     size_t i;
     for(i = 0; i < seq.size(); i++)
     {
-        seq[i] = (T)(i + 1); //dist(mt);
+        seq[i] = dist(mt);
     }
 }
 
@@ -123,6 +122,21 @@ int valid_vector(const std::vector<complex_t<T>> & lhs, const std::vector<comple
         d_re = ABS(d_re);
         d_im = ABS(d_im);
         if(d_re > delta || d_im > delta){
+            std::cout<<" diff at "<<i<<", lhs:"<<lhs[i]<<", rhs:"<<rhs[i]<<std::endl;
+            err_cnt++;
+        }
+    }
+    return err_cnt;
+}
+template<typename T>
+int valid_vector(const std::vector<T> & lhs, const std::vector<T> & rhs, T delta = (T)0.001){
+    assert(lhs.size() == rhs.size());
+    size_t i;
+    int err_cnt = 0;
+    for(i = 0;i < lhs.size(); i++){
+        T d = lhs[i]- rhs[i];
+        d = ABS(d);
+        if(d > delta){
             std::cout<<" diff at "<<i<<", lhs:"<<lhs[i]<<", rhs:"<<rhs[i]<<std::endl;
             err_cnt++;
         }
@@ -211,7 +225,7 @@ void fft_cooley_tukey(complex_t<T> *seq, size_t length, bool is_inverse)
 }
 
 template<typename T>
-void FFT_R2C(T *t_seq, complex_t<T> *f_seq, size_t length)
+void FFT_R2C(T *t_seq, complex_t<T> *f_seq, size_t length, bool half_mode=false)
 {
     if(length == 1) return;
     assert( ( (length & (length - 1)) == 0 ) && "the length mush be a power of 2");
@@ -238,11 +252,16 @@ void FFT_R2C(T *t_seq, complex_t<T> *f_seq, size_t length)
     }
     f_seq[length/2] = complex_t<T>( std::real(seq[0])-std::imag(seq[0]), (T)0); // why?
     
-    // conjugate symmetric
-    for(size_t k = 1; k < length/2; k++)
+    // if half_mode is true, f_seq only need length/2+1. the second half is ignored
+    if(!half_mode)
     {
-        f_seq[length - k] = std::conj(f_seq[k]);
+        // conjugate symmetric
+        for(size_t k = 1; k < length/2; k++)
+        {
+            f_seq[length - k] = std::conj(f_seq[k]);
+        }
     }
+    
 }
 
 template<typename T>
@@ -270,6 +289,71 @@ void iFFT_C2R(complex_t<T> *f_seq, T *t_seq, size_t length)
     {
         t_seq[2*n] = std::real(seq[n]);
         t_seq[2*n+1] = std::imag(seq[n]);
+    }
+}
+
+template<typename T> 
+void Convolve_naive(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv)
+{
+    size_t conv_len = data_seq.size() + filter.size() - 1;
+    conv.reserve(conv_len);
+
+    std::vector<T> dat = data_seq;
+    std::vector<T> flt = filter;
+    std::reverse(flt.begin(), flt.end());
+    
+    size_t padding = flt.size() - 1;
+    dat.reserve(dat.size() + 2*padding);
+    for(size_t i = 0; i < padding; i++)
+    {
+        dat.insert(dat.begin(), (T)0);
+        dat.push_back((T)0);
+    }
+
+    for(size_t i = 0; i < conv_len; i++)
+    {
+        T v = 0;
+        for(size_t j = 0; j <= flt.size(); j++)
+        {
+            v += flt[j]*dat[i + j];
+        }
+        conv.push_back(v);
+    }
+}
+
+template<typename T> 
+void Convolve_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv)
+{
+    size_t conv_len = data_seq.size() + filter.size() - 1;
+    size_t fft_len = (size_t)std::pow(2, std::ceil(std::log2(conv_len)));
+    size_t fft_len_half = fft_len / 2;
+
+    std::vector<T> dat = data_seq;
+    std::vector<T> flt = filter;
+    std::reverse(flt.begin(), flt.end());
+    dat.resize(fft_len, (T)0);
+    flt.resize(fft_len, (T)0);
+
+    std::vector<complex_t<T>> dat_frqc;
+    std::vector<complex_t<T>> flt_frqc;
+    dat_frqc.resize(fft_len_half);
+    flt_frqc.resize(fft_len_half);
+
+    FFT_R2C(dat.data(), dat_frqc.data(), fft_len, true);
+    FFT_R2C(flt.data(), flt_frqc.data(), fft_len, true);
+
+    for(size_t i = 0; i < fft_len_half; i++)
+    {
+        dat_frqc[i] *= flt_frqc[i];
+    }
+
+    std::vector<T> conv_seq;
+    conv_seq.resize(fft_len);
+    iFFT_C2R(dat_frqc.data(), conv_seq.data(), fft_len);
+
+    for(size_t i = 0; i < conv_len; i++)
+    {
+        conv.push_back(conv_seq[i]);
     }
 }
 
@@ -321,6 +405,26 @@ int main()
         std::cout<<"length:"<<size<<", r2c fwd valid:"<< ( (err_cnt==0)?"y":"n" ) <<
             ", c2r bwd valid:"<<( (ierr_cnt==0)?"y":"n" ) <<std::endl;
     }
+
+    // 1d convolution
+    std::vector<d_type> data_seq;
+    std::vector<d_type> filter;
+
+    const size_t data_len = 128;
+    const size_t filter_len = 7;
+
+    data_seq.resize(data_len);
+    filter.resize(filter_len);
+    rand_vec(data_seq);
+    rand_vec(filter);
+
+    std::vector<d_type> conv_n, conv_f;
+    Convolve_naive(data_seq, filter, conv_n);
+    Convolve_naive(data_seq, filter, conv_f);
+    
+    int err_cnt = valid_vector(conv_n, conv_f);
+    std::cout<< "data size:"<<data_seq.size()<<", filter size:"<<filter.size()<<
+        ", result valid:"<<( (err_cnt==0)?"y":"n" )<<std::endl;
 
     return 0;
 }
