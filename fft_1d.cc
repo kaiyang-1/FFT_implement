@@ -326,11 +326,10 @@ void Convolve_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<
 {
     size_t conv_len = data_seq.size() + filter.size() - 1;
     size_t fft_len = (size_t)std::pow(2, std::ceil(std::log2(conv_len)));
-    size_t fft_len_half = fft_len / 2;
+    size_t fft_len_half = fft_len/2 + 1;
 
     std::vector<T> dat = data_seq;
     std::vector<T> flt = filter;
-    std::reverse(flt.begin(), flt.end());
     dat.resize(fft_len, (T)0);
     flt.resize(fft_len, (T)0);
 
@@ -420,7 +419,7 @@ int main()
 
     std::vector<d_type> conv_n, conv_f;
     Convolve_naive(data_seq, filter, conv_n);
-    Convolve_naive(data_seq, filter, conv_f);
+    Convolve_fft(data_seq, filter, conv_f);
     
     int err_cnt = valid_vector(conv_n, conv_f);
     std::cout<< "data size:"<<data_seq.size()<<", filter size:"<<filter.size()<<
