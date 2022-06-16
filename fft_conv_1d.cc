@@ -293,14 +293,14 @@ void iFFT_C2R(complex_t<T> *f_seq, T *t_seq, size_t length)
 }
 
 template<typename T> 
-void Convolve_naive(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv)
+void Convolve_naive(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv, bool correlation = false)
 {
     size_t conv_len = data_seq.size() + filter.size() - 1;
     conv.reserve(conv_len);
 
     std::vector<T> dat = data_seq;
     std::vector<T> flt = filter;
-    std::reverse(flt.begin(), flt.end());
+    if(!correlation) std::reverse(flt.begin(), flt.end());
     
     size_t padding = flt.size() - 1;
     dat.reserve(dat.size() + 2*padding);
@@ -322,7 +322,7 @@ void Convolve_naive(std::vector<T> &data_seq, std::vector<T> &filter, std::vecto
 }
 
 template<typename T> 
-void Convolve_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv)
+void Convolve_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv, bool correlation = false)
 {
     size_t conv_len = data_seq.size() + filter.size() - 1;
     size_t fft_len = (size_t)std::pow(2, std::ceil(std::log2(conv_len)));
@@ -330,6 +330,7 @@ void Convolve_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<
 
     std::vector<T> dat = data_seq;
     std::vector<T> flt = filter;
+    if(correlation) std::reverse(flt.begin(), flt.end());
     dat.resize(fft_len, (T)0);
     flt.resize(fft_len, (T)0);
 
@@ -403,6 +404,7 @@ int main()
         int ierr_cnt = valid_vector(t_seq_r, seq_bwd);
         std::cout<<"length:"<<size<<", r2c fwd valid:"<< ( (err_cnt==0)?"y":"n" ) <<
             ", c2r bwd valid:"<<( (ierr_cnt==0)?"y":"n" ) <<std::endl;
+        std::cout<<"---------------------------------------------"<<std::endl;
     }
 
     // 1d convolution
@@ -420,10 +422,11 @@ int main()
     std::vector<d_type> conv_n, conv_f;
     Convolve_naive(data_seq, filter, conv_n);
     Convolve_fft(data_seq, filter, conv_f);
-    
+
     int err_cnt = valid_vector(conv_n, conv_f);
-    std::cout<< "data size:"<<data_seq.size()<<", filter size:"<<filter.size()<<
+    std::cout<< "convolution data size:"<<data_seq.size()<<", filter size:"<<filter.size()<<
         ", result valid:"<<( (err_cnt==0)?"y":"n" )<<std::endl;
+    std::cout<<"---------------------------------------------"<<std::endl;
 
     return 0;
 }
