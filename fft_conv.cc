@@ -292,72 +292,62 @@ void iFFT_C2R(complex_t<T> *f_seq, T *t_seq, size_t length)
     }
 }
 
-template<typename T> 
-void Convolve_naive(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv, bool correlation = false)
+template<typename T>
+void FFT_R2C_2D(T *t_seq, complex_t<T> *f_seq, size_t len_w, size_t len_h, bool half_mode=false)
 {
-    size_t conv_len = data_seq.size() + filter.size() - 1;
-    conv.reserve(conv_len);
+    size_t v_len = len_h/2 + 1;
 
-    std::vector<T> dat = data_seq;
-    std::vector<T> flt = filter;
-    if(!correlation) std::reverse(flt.begin(), flt.end());
-    
-    size_t padding = flt.size() - 1;
-    dat.reserve(dat.size() + 2*padding);
-    for(size_t i = 0; i < padding; i++)
+    // vertical
+    T *tv = new T[len_h];
+    complex_t<T> *fv = new complex_t<T>[v_len];
+    for(size_t i = 0; i < len_w; i++)
     {
-        dat.insert(dat.begin(), (T)0);
-        dat.push_back((T)0);
+        for(size_t j = 0; j < len_h; j++)
+            tv[j] = t_seq[j*len_w + i];
+        
+        FFT_R2C(tv, fv, len_h, half_mode);
+
+        for(size_t j = 0; j < v_len; j++)
+            f_seq[j*len_w + i] = fv[j];
     }
 
-    for(size_t i = 0; i < conv_len; i++)
+    // horizontal
+    for(size_t j = 0; j < v_len; j++)
     {
-        T v = 0;
-        for(size_t j = 0; j <= flt.size(); j++)
-        {
-            v += flt[j]*dat[i + j];
-        }
-        conv.push_back(v);
+        fft_cooley_tukey(f_seq + j*len_w, len_w, 0);
+    }
+
+    delete [] tv;
+    delete [] fv;
+}
+
+template<typename T>
+void iFFT_C2R_2D(complex_t<T> *f_seq, T *t_seq, size_t len_w, size_t len_h)
+{
+    size_t v_len = len_h/2 + 1;
+
+    // horizontal
+    for(size_t j = 0; j < v_len; j++)
+    {
+        fft_cooley_tukey(f_seq + j*len_w, len_w, 1);
+    }
+
+    // vertical
+    T *tv = new T[len_h];
+    complex_t<T> *fv = new complex_t<T>[v_len];
+    for(size_t i = 0; i < len_w; i++)
+    {
+        for(size_t j = 0; j < v_len; j++)
+            fv[j] = f_seq[j*len_w + i];
+        
+        iFFT_C2R(fv, tv, len_h);
+
+        for(size_t j = 0; j < len_h; j++)
+            t_seq[j*len_w + i] = tv[j];
     }
 }
 
-template<typename T> 
-void Convolve_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv, bool correlation = false)
-{
-    size_t conv_len = data_seq.size() + filter.size() - 1;
-    size_t fft_len = (size_t)std::pow(2, std::ceil(std::log2(conv_len)));
-    size_t fft_len_half = fft_len/2 + 1;
-
-    std::vector<T> dat = data_seq;
-    std::vector<T> flt = filter;
-    if(correlation) std::reverse(flt.begin(), flt.end());
-    dat.resize(fft_len, (T)0);
-    flt.resize(fft_len, (T)0);
-
-    std::vector<complex_t<T>> dat_frqc;
-    std::vector<complex_t<T>> flt_frqc;
-    dat_frqc.resize(fft_len_half);
-    flt_frqc.resize(fft_len_half);
-
-    FFT_R2C(dat.data(), dat_frqc.data(), fft_len, true);
-    FFT_R2C(flt.data(), flt_frqc.data(), fft_len, true);
-
-    for(size_t i = 0; i < fft_len_half; i++)
-    {
-        dat_frqc[i] *= flt_frqc[i];
-    }
-
-    std::vector<T> conv_seq;
-    conv_seq.resize(fft_len);
-    iFFT_C2R(dat_frqc.data(), conv_seq.data(), fft_len);
-
-    for(size_t i = 0; i < conv_len; i++)
-    {
-        conv.push_back(conv_seq[i]);
-    }
-}
-
-int main()
+void test_fft_1d()
 {
     const size_t max_size = 128;
     for(size_t size = 2; size<=max_size; size *= 2)
@@ -406,7 +396,76 @@ int main()
             ", c2r bwd valid:"<<( (ierr_cnt==0)?"y":"n" ) <<std::endl;
         std::cout<<"---------------------------------------------"<<std::endl;
     }
+}
 
+template<typename T> 
+void Convolve1D_naive(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv, bool correlation = false)
+{
+    size_t conv_len = data_seq.size() + filter.size() - 1;
+    conv.reserve(conv_len);
+
+    std::vector<T> dat = data_seq;
+    std::vector<T> flt = filter;
+    if(!correlation) std::reverse(flt.begin(), flt.end());
+    
+    size_t padding = flt.size() - 1;
+    dat.reserve(dat.size() + 2*padding);
+    for(size_t i = 0; i < padding; i++)
+    {
+        dat.insert(dat.begin(), (T)0);
+        dat.push_back((T)0);
+    }
+
+    for(size_t i = 0; i < conv_len; i++)
+    {
+        T v = 0;
+        for(size_t j = 0; j <= flt.size(); j++)
+        {
+            v += flt[j]*dat[i + j];
+        }
+        conv.push_back(v);
+    }
+}
+
+template<typename T> 
+void Convolve1D_fft(std::vector<T> &data_seq, std::vector<T> &filter, std::vector<T> &conv, bool correlation = false)
+{
+    size_t conv_len = data_seq.size() + filter.size() - 1;
+    // take the value up to the power of 2
+    size_t fft_len = (size_t)std::pow(2, std::ceil(std::log2(conv_len)));
+    size_t fft_len_half = fft_len/2 + 1;
+
+    std::vector<T> dat = data_seq;
+    std::vector<T> flt = filter;
+    if(correlation) std::reverse(flt.begin(), flt.end());
+    dat.resize(fft_len, (T)0);
+    flt.resize(fft_len, (T)0);
+
+    std::vector<complex_t<T>> dat_frqc;
+    std::vector<complex_t<T>> flt_frqc;
+    dat_frqc.resize(fft_len_half);
+    flt_frqc.resize(fft_len_half);
+
+    FFT_R2C(dat.data(), dat_frqc.data(), fft_len, true);
+    FFT_R2C(flt.data(), flt_frqc.data(), fft_len, true);
+
+    for(size_t i = 0; i < fft_len_half; i++)
+    {
+        dat_frqc[i] *= flt_frqc[i];
+    }
+
+    std::vector<T> conv_seq;
+    conv_seq.resize(fft_len);
+    iFFT_C2R(dat_frqc.data(), conv_seq.data(), fft_len);
+
+    for(size_t i = 0; i < conv_len; i++)
+    {
+        conv.push_back(conv_seq[i]);
+    }
+}
+
+void test_conv_1d()
+{
     // 1d convolution
     std::vector<d_type> data_seq;
     std::vector<d_type> filter;
@@ -420,13 +479,162 @@ int main()
     rand_vec(filter);
 
     std::vector<d_type> conv_n, conv_f;
-    Convolve_naive(data_seq, filter, conv_n);
-    Convolve_fft(data_seq, filter, conv_f);
+    Convolve1D_naive(data_seq, filter, conv_n);
+    Convolve1D_fft(data_seq, filter, conv_f);
 
     int err_cnt = valid_vector(conv_n, conv_f);
-    std::cout<< "convolution data size:"<<data_seq.size()<<", filter size:"<<filter.size()<<
+    std::cout<< "1D convolution data size:"<<data_seq.size()<<", filter size:"<<filter.size()<<
         ", result valid:"<<( (err_cnt==0)?"y":"n" )<<std::endl;
     std::cout<<"---------------------------------------------"<<std::endl;
+}
+
+template<typename T>
+void Convolve2D_naive(const T *data, size_t data_w, size_t data_h,
+                      const T *filter, size_t filter_w, size_t filter_h,
+                      T *out, bool correlation = false)
+{
+    size_t out_h = data_h + filter_h - 1;
+    size_t out_w = data_w + filter_w - 1;
+    size_t pad_h = filter_h - 1;
+    size_t pad_w = filter_w - 1;
+    size_t i, j, ki, kj;
+
+    std::vector<T> _ff;
+    const T * f = filter;
+
+    if(!correlation)
+    {
+        _ff.resize(filter_w*filter_h);
+        std::reverse_copy(filter, filter + filter_w*filter_h, _ff.begin());
+        f = _ff.data();
+    }
+
+    auto get_data_value=[&](size_t dh, size_t dw)
+    {
+        size_t h, w;
+        h = dh - pad_h;
+        w = dw - pad_w;
+        if(dh < pad_h || h >= data_h)
+            return (T)0;
+        if(dw < pad_w || w >= data_w)
+            return (T)0;
+        size_t idx = h*data_w + w;
+        return data[idx];
+    };
+    
+    for(j = 0; j < out_h; j++)
+    {
+        for(i = 0; i < out_w; i++)
+        {
+            T v = 0;
+            for(kj = 0; kj < filter_h; kj++)
+            {
+                for(ki = 0; ki < filter_w; ki++)
+                {
+                    v += f[kj*filter_w + ki] * get_data_value(j + kj, i + ki);
+                }
+            }
+            out[j*out_w+i] = v;
+        }
+    }
+}
+
+template<typename T>
+void Convolve2D_fft(const T *data, size_t data_w, size_t data_h,
+                    const T *filter, size_t filter_w, size_t filter_h,
+                    T *out, bool correlation = false)
+{
+    size_t out_w = data_w + filter_w - 1;
+    size_t out_h = data_h + filter_h - 1;
+
+    // take the value up to the power of 2
+    size_t fft_len_w = (size_t)std::pow(2, std::ceil(std::log2(out_w)));
+    size_t fft_len_h = (size_t)std::pow(2, std::ceil(std::log2(out_h)));
+    size_t v_len = fft_len_h/2+1;
+
+    std::vector<T> _dat;
+    std::vector<T> _flt;
+    _dat.resize(fft_len_w*fft_len_h, (T)0);
+    _flt.resize(fft_len_w*fft_len_h, (T)0);
+
+    for(size_t j = 0; j < data_h; j++)
+    for(size_t i = 0; i < data_w; i++)
+    {
+        _dat[j*fft_len_w + i] = data[j*data_w + i];
+    }
+
+    for(size_t j = 0; j < filter_h; j++)
+    for(size_t i = 0; i < filter_w; i++)
+    {
+        if(correlation)
+            _flt[j*fft_len_w + i] = filter[(filter_h - 1 - j)*filter_w + filter_w - 1 - i]; // reverse
+        else
+            _flt[j*fft_len_w + i] = filter[j*filter_w + i];
+    }
+
+    std::vector<complex_t<T>> dat_frqc;
+    std::vector<complex_t<T>> flt_frqc;
+    dat_frqc.resize(fft_len_w*v_len);
+    flt_frqc.resize(fft_len_w*v_len);
+
+    FFT_R2C_2D(_dat.data(), dat_frqc.data(), fft_len_w, fft_len_h, true);
+    FFT_R2C_2D(_flt.data(), flt_frqc.data(), fft_len_w, fft_len_h, true);
+
+    for(size_t i = 0; i < fft_len_w*v_len; i++)
+    {
+        dat_frqc[i] *= flt_frqc[i];
+    }
+
+    std::vector<T> _out;
+    _out.resize(fft_len_w*fft_len_h);
+    iFFT_C2R_2D(dat_frqc.data(), _out.data(), fft_len_w, fft_len_h);
+
+    for(size_t j = 0; j < out_h; j++)
+    for(size_t i = 0; i < out_w; i++)
+    {
+        out[j*out_w + i] = _out[j*fft_len_w + i];
+    }
+}
+
+void test_conv_2d()
+{
+    const size_t filter_h = 5;
+    const size_t filter_w = 5;
+    const size_t data_h = 100;
+    const size_t data_w = 100;
+
+    std::vector<d_type> data;
+    std::vector<d_type> filter;
+
+    data.resize(data_h*data_w);
+    filter.resize(filter_h*filter_w);
+    rand_vec(data);
+    rand_vec(filter);
+
+    std::vector<d_type> conv_n;
+    std::vector<d_type> conv_f;
+    size_t out_w = data_w + filter_w - 1;
+    size_t out_h = data_h + filter_h - 1;
+    conv_n.resize(out_w*out_h);
+    conv_f.resize(out_w*out_h);
+
+    Convolve2D_naive( data.data(), data_w, data_h,
+                      filter.data(), filter_w, filter_h,
+                      conv_n.data(), 1 );
+    Convolve2D_fft( data.data(), data_w, data_h,
+                    filter.data(), filter_w, filter_h,
+                    conv_f.data(), 1 );
+    int err_cnt = valid_vector(conv_n, conv_f);
+    std::cout << "2D convolution data size:"<< data.size()<<", filter size:" << filter.size() <<
+                 ", result valid:"<<( (err_cnt==0)?"y":"n" ) << std::endl;
+}
+
+int main()
+{
+    test_fft_1d();
+
+    test_conv_1d();
+    test_conv_2d();
 
     return 0;
 }
